@@ -340,6 +340,7 @@ int read_line_pileup(FILE * bam_file, unsigned long min_qual, unsigned long min_
   free(cmqual); 
   free(cline);  
 
+    return 0;
 };
 
 
@@ -618,6 +619,18 @@ void extract_snps(unsigned long pos, FILE * output_snps, unsigned long * n_alt_1
     };
 };
 
+char *gen_output_filename(char *prefix)
+{
+    char *filename = NULL;
+    char *extension = ".stats";
+    int ln = strlen(prefix) + 1;
+    ln = ln + strlen(extension);
+    filename = malloc(sizeof(char) * ln);
+    strncpy(filename, prefix, strlen(prefix));
+    strncpy(filename+strlen(prefix), extension, strlen(extension) + 1);
+    return filename;
+}
+
 /*--------------------------------------------------------------*/
 /*--------------------------------------------------------------*/
 /*------------------------ Main program ------------------------*/
@@ -708,6 +721,7 @@ int main(int argc, char *argv[])
   
   char from_stdin, outgroup_available, compute_fst, ext_snps, map_qual_pileup;
   char *pileup_file_name, *pileup2_file_name, *outgroup_file_name, *snp_file_name;
+  char *stats_file_name = NULL;
   int arg_i, col_chrom, col_pos;
   from_stdin=2;
   outgroup_available=0;
@@ -733,6 +747,7 @@ int main(int argc, char *argv[])
       //else if (strcmp(argv[arg_i], "-pileup") == 0) {}
       else if (strcmp(argv[arg_i], "-snpfile") == 0) {ext_snps=1; arg_i++; snp_file_name=argv[arg_i];}
       else if (strcmp(argv[arg_i], "-annot") == 0) {if_gff=1; arg_i++; gff_file_name=argv[arg_i];}
+      else if (strcmp(argv[arg_i], "-stats") == 0) { arg_i++; stats_file_name=argv[arg_i];}
 /*      else if (strcmp(argv[arg_i], "-snpcolumns") == 0) 
 	{
 	  arg_i++; sscanf(argv[arg_i], "%u", &col_chrom); 
@@ -740,13 +755,20 @@ int main(int argc, char *argv[])
 	};
 */    }
   if (arg_i==argc-1) {
-    if (strcmp(argv[arg_i], "-") == 0) from_stdin=1; else {from_stdin=0; pileup_file_name=argv[arg_i];}
-  };
+    if (0 == strncmp(argv[arg_i], "-", 1)) {
+      from_stdin=1;
+    } else {
+      from_stdin=0;
+      pileup_file_name=argv[arg_i];
+    }
+  } else {
+    fprintf(stderr, "no pileup file supplied\n");
+  }
   //from_stdin=0; pileup_file_name=argv[arg_i-1];
   
   if ((n01==0)||(window_size==0)||(from_stdin==2))
     {
-      fprintf(stderr,"Missing values in command line!\n  Command:\n    npstat [options] file.pileup\n  or to read from standard input:\n    npstat [options] -\n  Options:\n   -n samplesize : haploid sample size\n   -l windowlength : window length\n   -mincov minimum_coverage : filter on minimum coverage (default 4)\n   -maxcov maximum_coverage : filter on maximum coverage (default 100)\n   -minqual minimum_base_quality : filter on base quality (default 10)\n   -nolowfreq m : filter on minimum allele count mac>m\n   -outgroup file.fa : outgroup file in FASTA\n   -annot file.gff3 : annotation file in GFF3\n   -snpfile file.snp : consider SNPs only if present in file.snp\n"); 
+      fprintf(stderr,"Missing values in command line!\n  Command:\n    npstat [options] file.pileup\n  or to read from standard input:\n    npstat [options] -\n  Options:\n   -n samplesize : haploid sample size\n   -l windowlength : window length\n   -mincov minimum_coverage : filter on minimum coverage (default 4)\n   -maxcov maximum_coverage : filter on maximum coverage (default 100)\n   -minqual minimum_base_quality : filter on base quality (default 10)\n   -nolowfreq m : filter on minimum allele count mac>m\n   -outgroup file.fa : outgroup file in FASTA\n   -annot file.gff3 : annotation file in GFF3\n   -snpfile file.snp : consider SNPs only if present in file.snp\n   -stats file.stats : output stats to an alternately named file\n"); 
       return(-1);
     };
 //        fprintf(stderr,"Missing values in command line!\n  Command:\n    NPStat [options] file.pileup\n  or to read from standard input:\n    NPStat [options] -\n  Options:\n   -n samplesize : haploid sample size\n   -l windowlength : window length\n   -mapqual : pileup includes mapping quality\n   -mincov minimum_coverage : filter on minimum coverage (default 4)\n   -maxcov maximum_coverage : filter on maximum coverage (default 100)\n   -minqual minimum_base_quality : filter on base quality (default 10)\n   -minmapqual minimum_mapping_quality : filter on mapping quality (default 10)\n   -nolowfreq m : filter on minimum allele count mac>m\n   -outgroup file.fa : outgroup file in FASTA\n   -fstpop2 file2.pileup : computes Fst with a second population \n    contained in file2.pileup\n   -n2 : sample size of the second population\n"); 
@@ -779,10 +801,15 @@ int main(int argc, char *argv[])
     if (bam_file1 == NULL){
       fprintf(stderr,"Error: the pileup file cannot be opened!");
       return(-1);
-    };     
+    };
+    if(stats_file_name == NULL) {
+      stats_file_name=gen_output_filename(pileup_file_name);
+    }
   } else {
     bam_file1=stdin;
-    pileup_file_name="NPStat_input";
+    if(stats_file_name == NULL) {
+      stats_file_name=gen_output_filename("NPStat_input");
+    }
   };
   //bam_file2=fopen(pileup2_file_name,"r");
   
@@ -802,10 +829,7 @@ int main(int argc, char *argv[])
   };
   };
   
-  strcpy(temp_file_name1,pileup_file_name);
-  strcpy(temp_file_name2,".stats");
-  strcat(temp_file_name1,temp_file_name2);
-  output_stat1=fopen(temp_file_name1,"w");
+  output_stat1 = fopen(stats_file_name,"w");
   if (output_stat1 == NULL){
       fprintf(stderr,"Error: the output file cannot be written!");
       return(-1);
@@ -926,7 +950,9 @@ int main(int argc, char *argv[])
 	  comb1.d_hq[rd-1]+=-(double)rd/(double)(n01*(rd-1))*(gsl_pow_int((double)k/(double)n01,rd-1));
 	  //(((double)rd-1)/(double)n01)*((1+(double)(rd+1)/gsl_pow_int((double)(rd-1),2))*(double)k/(double)n01-1)*gsl_pow_int((double)k/(double)n01,rd-2);
 	};
-      /*for(k=1;k<n02;k++)
+
+#ifdef IGNORE_THIS_BLOCK_OF_CODE
+      for(k=1;k<n02;k++)
 	{
 	  comb2.d_t[rd-1]+=(1-gsl_pow_int((double)k/(double)n02,rd)-gsl_pow_int(1-(double)k/(double)n02,rd))/(double)k;
 	  for(lt=1;lt<=m_bar;lt++)
@@ -937,14 +963,20 @@ int main(int argc, char *argv[])
 	  comb2.d_hl[rd-1]+=((double)rd/(double)n02)*((1-2/((double)rd-1))*(double)k/(double)n02-1)
 	    *gsl_pow_int((double)k/(double)n02,rd-2);
 	  comb2.d_hq[rd-1]+=(((double)rd-1)/(double)n02)*((1+(double)(rd+1)/gsl_pow_int((double)(rd-1),2))*(double)k/(double)n02-1)*gsl_pow_int((double)k/(double)n02,rd-2);
-	  /*    comb2.d_t[rd-1]+=(1-gsl_pow_int((double)k/(double)n02,rd-1)*((double)k/(double)n02+(double)rd)-gsl_pow_int(1-(double)k/(double)n02,rd))/(double)k;
+
+#ifdef DOUBLE_COMMENTED_BLOCK
+	  comb2.d_t[rd-1]+=(1-gsl_pow_int((double)k/(double)n02,rd-1)*((double)k/(double)n02+(double)rd)-gsl_pow_int(1-(double)k/(double)n02,rd))/(double)k;
 		comb2.d_p[rd-1]+=(-2*gsl_pow_int((double)k/(double)n02,rd-2))/(double)n02;
 		comb2.d_hl[rd-1]+=((double)rd/(double)n02)*((1-2/((double)rd-1))*(double)k/(double)n02-1)
 		*gsl_pow_int((double)k/(double)n02,rd-2);
 		comb2.d_hq[rd-1]+=(((double)rd-1)/(double)n02)*((1+(double)(rd+1)/gsl_pow_int((double)(rd-1),2))*(double)k/(double)n02-1)*gsl_pow_int((double)k/(double)n02,rd-2);
-	  */
-	/*};*/
-    };   
+#endif /* DOUBLE_COMMENTED_BLOCK */
+        
+    };
+#endif /* IGNORE_THIS_BLOCK_OF_CODE */
+ 
+    };
+
   /* NOFST BEGIN
      for(rd1=2;rd1<=max_cov;rd1++)
      {
